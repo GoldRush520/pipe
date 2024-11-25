@@ -63,7 +63,7 @@ async def send_heartbeat(token):
         try:
             async with session.post(f"{BASE_URL}/heartbeat", headers=headers, json=data, timeout=5) as response:
                 if response.status == 200:
-                    logging.info("心跳发送成功")
+                    logging.info(f"{Colors.GREEN}心跳发送成功 (IP: {ip}){Colors.RESET}")
                     return
                 elif response.status == 429:  # Rate limit error
                     return  # 静默处理限流错误
