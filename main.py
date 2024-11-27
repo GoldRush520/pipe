@@ -395,13 +395,14 @@ async def run_node():
                 if first_heartbeat:
                     logging.info("开始首次心跳...")
                     first_heartbeat = False
+                print(f"{Colors.CYAN}正在发送心跳...{Colors.RESET}")
                 for i, (token, email) in enumerate(token_email_mapping.items()):
                     proxy = proxies[i] if i < len(proxies) else None
-                    if proxy:
-                        print(f"{Colors.CYAN}使用代理进行心跳发送: {proxy}{Colors.RESET}")
-                    else:
-                        print(f"{Colors.CYAN}使用本地直连进行心跳发送{Colors.RESET}")
                     await send_heartbeat(token, proxy)
+                    if proxy:
+                        print(f"{Colors.CYAN}使用代理为邮箱: {email} 发送心跳成功: {proxy}{Colors.RESET}")
+                    else:
+                        print(f"{Colors.CYAN}使用本地直连为邮箱: {email} 发送心跳成功{Colors.RESET}")
                 next_heartbeat_time = current_time + timedelta(seconds=HEARTBEAT_INTERVAL)
             
             if current_time >= next_test_time:
