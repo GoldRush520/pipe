@@ -219,11 +219,83 @@ async def register_account():
                         except Exception as e:
                             print(f"保存token和邮箱时发生错误: {e}")
                             print("请手动保存token和邮箱")
-                    return
+                    return token
                 error_message = await response.text()
                 logging.error(f"注册失败。状态: {response.status}, 错误信息: {error_message}")
         except Exception as e:
             logging.error(f"注册过程中发生错误: {e}")
+
+async def login_account():
+    """登录账户并获取token"""
+    print("\n=== 账户登录 ===")
+    email = input("请输入邮箱: ")
+    password = input("请输入密码: ")
+    
+    # 进行登录
+    async with aiohttp.ClientSession() as session:
+        try:
+            data = {
+                "email": email,
+                "password": password
+            }
+            async with session.post(f"{BASE_URL}/login", json=data, timeout=5) as response:
+                if response.status == 200:
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'application/json' in content_type:
+                        result = await response.json()
+                        token = result.get('token')
+                        if token:
+                            print(f"\n登录成功！")
+                            print(f"您的token是: {token}")
+                            print("请保存此信息到tokens.txt文件中")
+                            
+                            # 可选：自动保存token到文件
+                            save = input("\n是否自动保存token到tokens.txt？(y/n): ")
+                            if save.lower() == 'y':
+                                try:
+                                    with open('tokens.txt', 'a') as f:
+                                        f.write(f"{token},{email}\n")
+                                    print("token和邮箱已成功添加到tokens.txt")
+                                except Exception as e:
+                                    print(f"保存token和邮箱时发生错误: {e}")
+                                    print("请手动保存token和邮箱")
+                            return token
+                        else:
+                            error_message = result.get('message', '未知的错误')
+                            logging.error(f"登录失败。状态: {response.status}, 错误信息: {error_message}")
+                    else:
+                        # 处理纯文本响应
+                        response_text = await response.text()
+                        print(f"\n登录成功，但返回的是纯文本信息: {response_text}")
+                        # 尝试从纯文本中提取token
+                        import json
+                        try:
+                            json_data = json.loads(response_text)
+                            token = json_data.get('token')
+                            if token:
+                                print(f"您的token是: {token}")
+                                print("请保存此信息到tokens.txt文件中")
+                                
+                                # 可选：自动保存token到文件
+                                save = input("\n是否自动保存token到tokens.txt？(y/n): ")
+                                if save.lower() == 'y':
+                                    try:
+                                        with open('tokens.txt', 'a') as f:
+                                            f.write(f"{token},{email}\n")
+                                        print("token和邮箱已成功添加到tokens.txt")
+                                    except Exception as e:
+                                        print(f"保存token和邮箱时发生错误: {e}")
+                                        print("请手动保存token和邮箱")
+                                return token
+                            else:
+                                logging.error(f"登录成功，但无法从响应中提取token。响应内容: {response_text}")
+                        except json.JSONDecodeError:
+                            logging.error(f"响应不是有效的JSON格式。响应内容: {response_text}")
+                else:
+                    error_message = await response.text()
+                    logging.error(f"登录失败。状态: {response.status}, 错误信息: {error_message}")
+        except Exception as e:
+            logging.error(f"登录过程中发生错误: {e}")
 
 async def display_menu():
     """显示主菜单"""
@@ -236,15 +308,23 @@ async def display_menu():
         print(f"\n{Colors.CYAN}请选择功能:{Colors.RESET}")
         print(f"{Colors.WHITE}1. 运行节点{Colors.RESET}")
         print(f"{Colors.WHITE}2. 注册账户{Colors.RESET}")
-        print(f"{Colors.WHITE}3. 退出程序\n{Colors.RESET}")
+        print(f"{Colors.WHITE}3. 登录账户{Colors.RESET}")
+        print(f"{Colors.WHITE}4. 退出程序\n{Colors.RESET}")
         
-        choice = input("请输入选项 (1-3): ")
+        choice = input("请输入选项 (1-4): ")
         
         if choice == "1":
             await run_node()
         elif choice == "2":
-            await register_account()
+            token = await register_account()
+            if token:
+                print(f"注册成功，token: {token}")
         elif choice == "3":
+            token = await login_account()
+            if token:
+                # 这里你可以添加使用token的逻辑，例如自动运行节点测试等
+                print(f"使用获取的token: {token}")
+        elif choice == "4":
             print("\n感谢使用，再见！")
             sys.exit(0)
         else:
