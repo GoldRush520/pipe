@@ -339,7 +339,7 @@ async def display_menu():
         print(f"\n{Colors.CYAN}请选择功能:{Colors.RESET}")
         print(f"{Colors.WHITE}1. 运行节点{Colors.RESET}")
         print(f"{Colors.WHITE}2. 注册账户{Colors.RESET}")
-        print(f"{Colors.WHITE}3. 登录账户{Colors.RESET}")
+        print(f"{Colors.WHITE}3. 登录账户-获取token{Colors.RESET}")
         print(f"{Colors.WHITE}4. 退出程序\n{Colors.RESET}")
         
         choice = input("请输入选项 (1-4): ")
