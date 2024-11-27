@@ -200,10 +200,6 @@ async def register_account():
                 "password": password,
                 "invite_code": invite_code
             }
-            proxy = await load_proxies()
-            if proxy:
-                session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False))
-                session._connector._proxy = proxy[0]  # 使用第一个代理进行注册
             async with session.post(f"{BASE_URL}/signup", json=data, timeout=5) as response:
                 if response.status in [200, 201]:
                     result = await response.json()
