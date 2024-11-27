@@ -202,26 +202,57 @@ async def register_account():
             }
             async with session.post(f"{BASE_URL}/signup", json=data, timeout=5) as response:
                 if response.status in [200, 201]:
-                    result = await response.json()
-                    token = result.get('token')
-                    print(f"\n注册成功！")
-                    print(f"您的token是: {token}")
-                    print("请保存此信息到token.txt文件中")
-                    
-                    # 可选：自动保存注册信息到文件
-                    save = input("\n是否自动保存注册信息到token.txt？(y/n): ")
-                    if save.lower() == 'y':
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'application/json' in content_type:
+                        result = await response.json()
+                        token = result.get('token')
+                        print(f"\n注册成功！")
+                        print(f"您的token是: {token}")
+                        print("请保存此信息到tokens.txt文件中")
+                        
+                        # 可选：自动保存注册信息到文件
+                        save = input("\n是否自动保存注册信息到tokens.txt？(y/n): ")
+                        if save.lower() == 'y':
+                            try:
+                                with open('tokens.txt', 'a') as f:
+                                    f.write(f"{token},{email}\n")
+                                print("token和邮箱已成功添加到tokens.txt")
+                                print("如需运行节点，请确保tokens.txt包含所有需要运行的token和对应的邮箱")
+                            except Exception as e:
+                                print(f"保存token和邮箱时发生错误: {e}")
+                                print("请手动保存token和邮箱")
+                        return token
+                    else:
+                        # 处理纯文本响应
+                        response_text = await response.text()
+                        print(f"\n注册成功，但返回的是纯文本信息: {response_text}")
+                        # 尝试从纯文本中提取token
+                        import json
                         try:
-                            with open('token.txt', 'a') as f:
-                                f.write(f"{token},{email}\n")
-                            print("token和邮箱已成功添加到token.txt")
-                            print("如需运行节点，请确保token.txt包含所有需要运行的token和对应的邮箱")
-                        except Exception as e:
-                            print(f"保存token和邮箱时发生错误: {e}")
-                            print("请手动保存token和邮箱")
-                    return token
-                error_message = await response.text()
-                logging.error(f"注册失败。状态: {response.status}, 错误信息: {error_message}")
+                            json_data = json.loads(response_text)
+                            token = json_data.get('token')
+                            if token:
+                                print(f"您的token是: {token}")
+                                print("请保存此信息到tokens.txt文件中")
+                                
+                                # 可选：自动保存token到文件
+                                save = input("\n是否自动保存token到tokens.txt？(y/n): ")
+                                if save.lower() == 'y':
+                                    try:
+                                        with open('tokens.txt', 'a') as f:
+                                            f.write(f"{token},{email}\n")
+                                        print("token和邮箱已成功添加到tokens.txt")
+                                    except Exception as e:
+                                        print(f"保存token和邮箱时发生错误: {e}")
+                                        print("请手动保存token和邮箱")
+                                return token
+                            else:
+                                logging.error(f"注册成功，但无法从响应中提取token。响应内容: {response_text}")
+                        except json.JSONDecodeError:
+                            logging.error(f"响应不是有效的JSON格式。响应内容: {response_text}")
+                else:
+                    error_message = await response.text()
+                    logging.error(f"注册失败。状态: {response.status}, 错误信息: {error_message}")
         except Exception as e:
             logging.error(f"注册过程中发生错误: {e}")
 
