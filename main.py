@@ -277,8 +277,13 @@ async def run_node():
                     current_points = await fetch_points(token, proxy)
                     if current_points is not None:
                         print(f"{Colors.GREEN}邮箱: {email} 测试节点循环完成后当前分数: {current_points}{Colors.RESET}")
-                print(f"{Colors.WHITE}等待下一轮测试，剩余时间: {timedelta(seconds=(next_test_time - current_time).total_seconds())}{Colors.RESET}")
                 next_test_time = current_time + timedelta(seconds=TEST_INTERVAL)
+            
+            remaining_time = next_test_time - current_time
+            if remaining_time.total_seconds() > 0:
+                print(f"\r{Colors.WHITE}等待下一轮测试，剩余时间: {remaining_time}{Colors.RESET}", end="")
+            else:
+                print(f"\r{Colors.WHITE}下一轮测试即将开始{Colors.RESET}", end="")
             
             await asyncio.sleep(1)
     except KeyboardInterrupt:
