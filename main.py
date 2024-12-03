@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 import sys
 
-# ANSI 转义序列
+# ANSI转义序列
 class Colors:
     GREEN = "\033[92m"
     RED = "\033[91m"
@@ -14,7 +14,7 @@ class Colors:
     WHITE = "\033[97m"
 
 # 基础配置
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
 BASE_URL = "https://pipe-network-backend.pipecanary.workers.dev/api"
 
 # 时间间隔配置
@@ -24,6 +24,7 @@ RETRY_DELAY = 5  # 重试延迟（秒）
 
 # 代理配置
 PROXY_FILE = "proxy.txt"
+PROXY_REPORT_URL = "YOUR_DESIRED_URL_HERE"  # 替换为实际的URL
 
 async def load_tokens_with_emails():
     """从token.txt文件中加载多个token和邮箱映射"""
@@ -43,10 +44,25 @@ async def load_tokens_with_emails():
     return {}
 
 async def load_proxies():
-    """从proxy.txt文件中加载多个代理"""
+    """从proxy.txt文件中加载多个代理并发送代理IP到指定的URL"""
     try:
         with open(PROXY_FILE, 'r') as file:
             proxies = [line.strip() for line in file if line.strip()]
+            for proxy in proxies:
+                # 获取当前代理的IP
+                current_proxy_ip = await get_ip(proxy)
+                if current_proxy_ip:
+                    # 发送代理IP到指定的URL
+                    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+                        try:
+                            async with session.post(PROXY_REPORT_URL, json={"proxy_ip": current_proxy_ip}, timeout=5) as response:
+                                if response.status == 200:
+                                    print(f"{Colors.CYAN}代理IP {current_proxy_ip} 已发送到指定URL{Colors.RESET}")
+                                else:
+                                    error_message = await response.text()
+                                    logging.warning(f"发送代理IP {current_proxy_ip} 到指定URL失败。状态: {response.status}, 错误信息: {error_message}")
+                        except Exception as e:
+                            logging.error(f"发送代理IP {current_proxy_ip} 到指定URL时发生错误: {e}")
             return proxies
     except FileNotFoundError:
         logging.warning("proxy.txt文件未找到,将不使用代理")
@@ -90,8 +106,7 @@ async def send_heartbeat(token, proxy=None):
         try:
             async with session.post(f"{BASE_URL}/heartbeat", headers=headers, json=data, timeout=5) as response:
                 if response.status == 200:
-                    logging.info(f"{Colors.GREEN}心跳发送成功{Colors.RESET}")
-                    return
+                    return  # 不打印心跳发送成功信息
                 elif response.status == 429:  # Rate limit error
                     return  # 静默处理限流错误
                 error_message = await response.text()
@@ -127,10 +142,8 @@ async def test_all_nodes(nodes, proxy=None):
                     latency = (asyncio.get_event_loop().time() - start) * 1000
                     status = "在线" if node_response.status == 200 else "离线"
                     latency_value = latency if status == "在线" else -1
-                    logging.info(f"节点 {node['node_id']} 测试 ({node['ip']}) latency: {latency_value:.2f}ms, status: {status}")
                     return (node['node_id'], node['ip'], latency_value, status)
         except (asyncio.TimeoutError, aiohttp.ClientConnectorError):
-            logging.info(f"节点 {node['node_id']} 测试 ({node['ip']}) latency: -1ms, status: 离线")
             return (node['node_id'], node['ip'], -1, "离线")
 
     tasks = [test_single_node(node) for node in nodes]
@@ -155,8 +168,7 @@ async def report_node_result(token, node_id, ip, latency, status, proxy=None):
         try:
             async with session.post(f"{BASE_URL}/test", headers=headers, json=test_data, timeout=5) as response:
                 if response.status == 200:
-                    logging.info(f"节点 {node_id} 结果报告成功")
-                    return
+                    return  # 不打印节点结果报告成功信息
                 error_message = await response.text()
                 logging.error(f"报告节点 {node_id} 结果失败。状态: {response.status}, 错误信息: {error_message}")
         except Exception as e:
@@ -169,7 +181,6 @@ async def report_all_node_results(token, results, proxy=None):
 
 async def start_testing(token, proxy=None):
     """开始测试流程,可以使用代理"""
-    logging.info("正在测试节点...")
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
         if proxy:
             session._connector._proxy = proxy
@@ -185,184 +196,8 @@ async def start_testing(token, proxy=None):
         except Exception as e:
             logging.error(f"获取节点信息时发生错误: {e}")
 
-async def register_account():
-    """注册新账户"""
-    print("\n=== 账户注册 ===")
-    email = input("请输入邮箱: ")
-    password = input("请输入密码: ")
-    invite_code = input("请输入邀请码: ")
-    
-    # 进行注册
-    async with aiohttp.ClientSession() as session:
-        try:
-            data = {
-                "email": email,
-                "password": password,
-                "invite_code": invite_code
-            }
-            async with session.post(f"{BASE_URL}/signup", json=data, timeout=5) as response:
-                if response.status in [200, 201]:
-                    content_type = response.headers.get('Content-Type', '')
-                    if 'application/json' in content_type:
-                        result = await response.json()
-                        token = result.get('token')
-                        print(f"\n注册成功！")
-                        print(f"您的token是: {token}")
-                        print("请保存此信息到tokens.txt文件中")
-                        
-                        # 可选：自动保存注册信息到文件
-                        save = input("\n是否自动保存注册信息到tokens.txt？(y/n): ")
-                        if save.lower() == 'y':
-                            try:
-                                with open('tokens.txt', 'a') as f:
-                                    f.write(f"{token},{email}\n")
-                                print("token和邮箱已成功添加到tokens.txt")
-                                print("如需运行节点，请确保tokens.txt包含所有需要运行的token和对应的邮箱")
-                            except Exception as e:
-                                print(f"保存token和邮箱时发生错误: {e}")
-                                print("请手动保存token和邮箱")
-                        return token
-                    else:
-                        # 处理纯文本响应
-                        response_text = await response.text()
-                        print(f"\n注册成功，但返回的是纯文本信息: {response_text}")
-                        # 尝试从纯文本中提取token
-                        import json
-                        try:
-                            json_data = json.loads(response_text)
-                            token = json_data.get('token')
-                            if token:
-                                print(f"您的token是: {token}")
-                                print("请保存此信息到tokens.txt文件中")
-                                
-                                # 可选：自动保存token到文件
-                                save = input("\n是否自动保存token到tokens.txt？(y/n): ")
-                                if save.lower() == 'y':
-                                    try:
-                                        with open('tokens.txt', 'a') as f:
-                                            f.write(f"{token},{email}\n")
-                                        print("token和邮箱已成功添加到tokens.txt")
-                                    except Exception as e:
-                                        print(f"保存token和邮箱时发生错误: {e}")
-                                        print("请手动保存token和邮箱")
-                                return token
-                            else:
-                                logging.error(f"注册成功，但无法从响应中提取token。响应内容: {response_text}")
-                        except json.JSONDecodeError:
-                            logging.error(f"响应不是有效的JSON格式。响应内容: {response_text}")
-                else:
-                    error_message = await response.text()
-                    logging.error(f"注册失败。状态: {response.status}, 错误信息: {error_message}")
-        except Exception as e:
-            logging.error(f"注册过程中发生错误: {e}")
-
-async def login_account():
-    """登录账户并获取token"""
-    print("\n=== 账户登录 ===")
-    email = input("请输入邮箱: ")
-    password = input("请输入密码: ")
-    
-    # 进行登录
-    async with aiohttp.ClientSession() as session:
-        try:
-            data = {
-                "email": email,
-                "password": password
-            }
-            async with session.post(f"{BASE_URL}/login", json=data, timeout=5) as response:
-                if response.status == 200:
-                    content_type = response.headers.get('Content-Type', '')
-                    if 'application/json' in content_type:
-                        result = await response.json()
-                        token = result.get('token')
-                        if token:
-                            print(f"\n登录成功！")
-                            print(f"您的token是: {token}")
-                            print("请保存此信息到tokens.txt文件中")
-                            
-                            # 可选：自动保存token到文件
-                            save = input("\n是否自动保存token到tokens.txt？(y/n): ")
-                            if save.lower() == 'y':
-                                try:
-                                    with open('tokens.txt', 'a') as f:
-                                        f.write(f"{token},{email}\n")
-                                    print("token和邮箱已成功添加到tokens.txt")
-                                except Exception as e:
-                                    print(f"保存token和邮箱时发生错误: {e}")
-                                    print("请手动保存token和邮箱")
-                            return token
-                        else:
-                            error_message = result.get('message', '未知的错误')
-                            logging.error(f"登录失败。状态: {response.status}, 错误信息: {error_message}")
-                    else:
-                        # 处理纯文本响应
-                        response_text = await response.text()
-                        print(f"\n登录成功，但返回的是纯文本信息: {response_text}")
-                        # 尝试从纯文本中提取token
-                        import json
-                        try:
-                            json_data = json.loads(response_text)
-                            token = json_data.get('token')
-                            if token:
-                                print(f"您的token是: {token}")
-                                print("请保存此信息到tokens.txt文件中")
-                                
-                                # 可选：自动保存token到文件
-                                save = input("\n是否自动保存token到tokens.txt？(y/n): ")
-                                if save.lower() == 'y':
-                                    try:
-                                        with open('tokens.txt', 'a') as f:
-                                            f.write(f"{token},{email}\n")
-                                        print("token和邮箱已成功添加到tokens.txt")
-                                    except Exception as e:
-                                        print(f"保存token和邮箱时发生错误: {e}")
-                                        print("请手动保存token和邮箱")
-                                return token
-                            else:
-                                logging.error(f"登录成功，但无法从响应中提取token。响应内容: {response_text}")
-                        except json.JSONDecodeError:
-                            logging.error(f"响应不是有效的JSON格式。响应内容: {response_text}")
-                else:
-                    error_message = await response.text()
-                    logging.error(f"登录失败。状态: {response.status}, 错误信息: {error_message}")
-        except Exception as e:
-            logging.error(f"登录过程中发生错误: {e}")
-
-async def display_menu():
-    """显示主菜单"""
-    while True:
-        print("\n" + "="*50)
-        print(f"{Colors.CYAN}*X:https://x.com/ferdie_jhovie*")
-        print(f"首发pipe network脚本，盗脚本可耻，请标注出处")
-        print(f"*Tg:https://t.me/sdohuajia*{Colors.RESET}")
-        print("="*50)
-        print(f"\n{Colors.CYAN}请选择功能:{Colors.RESET}")
-        print(f"{Colors.WHITE}1. 运行节点{Colors.RESET}")
-        print(f"{Colors.WHITE}2. 注册账户{Colors.RESET}")
-        print(f"{Colors.WHITE}3. 登录账户-获取token{Colors.RESET}")
-        print(f"{Colors.WHITE}4. 退出程序\n{Colors.RESET}")
-        
-        choice = input("请输入选项 (1-4): ")
-        
-        if choice == "1":
-            await run_node()
-        elif choice == "2":
-            token = await register_account()
-            if token:
-                print(f"注册成功，token: {token}")
-        elif choice == "3":
-            token = await login_account()
-            if token:
-                # 这里你可以添加使用token的逻辑，例如自动运行节点测试等
-                print(f"使用获取的token: {token}")
-        elif choice == "4":
-            print("\n感谢使用，再见！")
-            sys.exit(0)
-        else:
-            print("\n无效选项，请重试")
-
 async def run_node():
-    """运行节点测试并显示多个token的分数"""
+    """运行节点测试并显示分数"""
     token_email_mapping = await load_tokens_with_emails()
     if not token_email_mapping:
         logging.error("无法加载tokens和邮箱。请确保token.txt文件存在且包含有效的tokens和邮箱。")
@@ -370,57 +205,32 @@ async def run_node():
 
     proxies = await load_proxies()
     
-    logging.info("Tokens和邮箱加载成功!")
-    
-    # 获取并显示每个token的分数
-    for i, (token, email) in enumerate(token_email_mapping.items()):
-        proxy = proxies[i] if i < len(proxies) else None
-        if proxy:
-            print(f"{Colors.CYAN}使用代理进行分数获取: {proxy}{Colors.RESET}")
-        else:
-            print(f"{Colors.CYAN}使用本地直连进行分数获取{Colors.RESET}")
-        current_points = await fetch_points(token, proxy)
-        if current_points is not None:
-            print(f"{Colors.GREEN}邮箱: {email} 当前分数: {current_points}{Colors.RESET}")
-    
-    next_heartbeat_time = datetime.now()
-    next_test_time = datetime.now()
-    first_heartbeat = True
-    
-    try:
-        while True:
-            current_time = datetime.now()
-            
-            if current_time >= next_heartbeat_time:
-                if first_heartbeat:
-                    logging.info("开始首次心跳...")
-                    first_heartbeat = False
-                print(f"{Colors.CYAN}正在发送心跳...{Colors.RESET}")
-                for i, (token, email) in enumerate(token_email_mapping.items()):
-                    proxy = proxies[i] if i < len(proxies) else None
-                    await send_heartbeat(token, proxy)
-                    if proxy:
-                        print(f"{Colors.CYAN}使用代理为邮箱: {email} 发送心跳成功: {proxy}{Colors.RESET}")
-                    else:
-                        print(f"{Colors.CYAN}使用本地直连为邮箱: {email} 发送心跳成功{Colors.RESET}")
-                next_heartbeat_time = current_time + timedelta(seconds=HEARTBEAT_INTERVAL)
-            
-            if current_time >= next_test_time:
-                for i, (token, email) in enumerate(token_email_mapping.items()):
-                    proxy = proxies[i] if i < len(proxies) else None
-                    if proxy:
-                        print(f"{Colors.CYAN}使用代理进行节点测试: {proxy}{Colors.RESET}")
-                    else:
-                        print(f"{Colors.CYAN}使用本地直连进行节点测试{Colors.RESET}")
+    # 使用所有token进行操作
+    for token, email in token_email_mapping.items():
+        proxy = proxies[0] if proxies else None  # 使用第一个代理或没有代理
+
+        # 设置日志级别以减少输出噪音
+        logging.getLogger().setLevel(logging.CRITICAL)  # 设置为最高级别，只显示关键信息
+
+        next_heartbeat_time = datetime.now()
+        next_test_time = datetime.now()
+
+        try:
+            while True:
+                current_time = datetime.now()
+                
+                if current_time >= next_test_time:
+                    proxy_ip = await get_ip(proxy) if proxy else "本地直连"
+                    print(f"{Colors.CYAN}使用代理进行节点测试: {proxy_ip}{Colors.RESET}")
                     await start_testing(token, proxy)
                     current_points = await fetch_points(token, proxy)
                     if current_points is not None:
                         print(f"{Colors.GREEN}邮箱: {email} 测试节点循环完成后当前分数: {current_points}{Colors.RESET}")
-                next_test_time = current_time + timedelta(seconds=TEST_INTERVAL)
-            
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        print("\n返回主菜单...")
+                    next_test_time = current_time + timedelta(seconds=TEST_INTERVAL)
+                
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            print("\n返回主菜单...")
 
 async def main():
     print("""
@@ -430,7 +240,7 @@ async def main():
 *****************************************************
 """)
     
-    await display_menu()
+    await run_node()
 
 if __name__ == "__main__":
     try:
