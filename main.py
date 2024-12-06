@@ -174,51 +174,55 @@ async def start_testing(token, proxy=None):
 async def login_account():
     """登录账户并获取token"""
     print("\n=== 账户登录 ===")
-    email = input("请输入邮箱: ")
-    password = input("请输入密码: ")
     
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-        try:
-            data = {
-                "email": email,
-                "password": password
-            }
-            
-            # 从proxy.txt读取最后一行代理
-            with open('proxy.txt', 'r') as f:
-                proxies = f.readlines()
-            if proxies:
-                proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
-                print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
-                session._connector._proxy = proxy
-            
-            async with session.post(
-                f"{BASE_URL}/login",
-                json=data,
-                timeout=5
-            ) as response:
-                response_text = await response.text()
-                if response.status == 200:
-                    try:
-                        result = json.loads(response_text)
-                        token = result.get('token')
-                        print(f"\n{Colors.GREEN}登录成功！您的token是: {token}{Colors.RESET}")
-                        print("请保存此信息到tokens.txt文件中")
-                        
-                        save = input("\n是否自动保存登录信息到tokens.txt？(y/n): ")
-                        if save.lower() == 'y':
-                            try:
-                                with open('tokens.txt', 'a') as f:
-                                    f.write(f"{token},{email}\n")
-                                print(f"{Colors.GREEN}token和邮箱已成功添加到tokens.txt{Colors.RESET}")
-                            except Exception as e:
-                                print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
-                    except json.JSONDecodeError:
-                        print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
-                else:
-                    print(f"{Colors.RED}登录失败: {response_text}{Colors.RESET}")
-        except Exception as e:
-            print(f"{Colors.RED}登录过程中发生错误: {e}{Colors.RESET}")
+    while True:  # 添加循环以允许多次输入
+        email = input("请输入邮箱 (直接回车结束): ")
+        if not email:  # 如果用户输入空白行，则结束循环
+            break
+        password = input("请输入密码: ")
+        
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+            try:
+                data = {
+                    "email": email,
+                    "password": password
+                }
+                
+                # 从proxy.txt读取最后一行代理
+                with open('proxy.txt', 'r') as f:
+                    proxies = f.readlines()
+                if proxies:
+                    proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
+                    print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
+                    session._connector._proxy = proxy
+                
+                async with session.post(
+                    f"{BASE_URL}/login",
+                    json=data,
+                    timeout=5
+                ) as response:
+                    response_text = await response.text()
+                    if response.status == 200:
+                        try:
+                            result = json.loads(response_text)
+                            token = result.get('token')
+                            print(f"\n{Colors.GREEN}登录成功！您的token是: {token}{Colors.RESET}")
+                            print("请保存此信息到tokens.txt文件中")
+                            
+                            save = input("\n是否自动保存登录信息到tokens.txt？(y/n): ")
+                            if save.lower() == 'y':
+                                try:
+                                    with open('tokens.txt', 'a') as f:
+                                        f.write(f"{token},{email}\n")
+                                    print(f"{Colors.GREEN}token和邮箱已成功添加到tokens.txt{Colors.RESET}")
+                                except Exception as e:
+                                    print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
+                        except json.JSONDecodeError:
+                            print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
+                    else:
+                        print(f"{Colors.RED}登录失败: {response_text}{Colors.RESET}")
+            except Exception as e:
+                print(f"{Colors.RED}登录过程中发生错误: {e}{Colors.RESET}")
 
 async def register_account():
     """注册新账户"""
