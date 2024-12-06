@@ -26,9 +26,9 @@ RETRY_DELAY = 5  # 重试延迟（秒）
 PROXY_FILE = "proxy.txt"
 
 async def load_tokens_with_emails():
-    """从tokens.txt文件中加载多个token和邮箱映射"""
+    """从token.txt文件中加载多个token和邮箱映射"""
     try:
-        with open('tokens.txt', 'r') as file:
+        with open('token.txt', 'r') as file:
             token_email_mapping = {}
             for line in file:
                 parts = line.strip().split(',')
@@ -37,9 +37,9 @@ async def load_tokens_with_emails():
                     token_email_mapping[token] = email
             return token_email_mapping
     except FileNotFoundError:
-        logging.error("tokens.txt文件未找到")
+        logging.error("token.txt文件未找到")
     except Exception as e:
-        logging.error(f"从tokens.txt文件加载tokens和邮箱时发生错误: {e}")
+        logging.error(f"从token.txt文件加载tokens和邮箱时发生错误: {e}")
     return {}
 
 async def load_proxies():
@@ -174,55 +174,51 @@ async def start_testing(token, proxy=None):
 async def login_account():
     """登录账户并获取token"""
     print("\n=== 账户登录 ===")
+    email = input("请输入邮箱: ")
+    password = input("请输入密码: ")
     
-    while True:  # 添加循环以允许多次输入
-        email = input("请输入邮箱 (直接回车结束): ")
-        if not email:  # 如果用户输入空白行，则结束循环
-            break
-        password = input("请输入密码: ")
-        
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-            try:
-                data = {
-                    "email": email,
-                    "password": password
-                }
-                
-                # 从proxy.txt读取最后一行代理
-                with open('proxy.txt', 'r') as f:
-                    proxies = f.readlines()
-                if proxies:
-                    proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
-                    print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
-                    session._connector._proxy = proxy
-                
-                async with session.post(
-                    f"{BASE_URL}/login",
-                    json=data,
-                    timeout=5
-                ) as response:
-                    response_text = await response.text()
-                    if response.status == 200:
-                        try:
-                            result = json.loads(response_text)
-                            token = result.get('token')
-                            print(f"\n{Colors.GREEN}登录成功！您的token是: {token}{Colors.RESET}")
-                            print("请保存此信息到tokens.txt文件中")
-                            
-                            save = input("\n是否自动保存登录信息到tokens.txt？(y/n): ")
-                            if save.lower() == 'y':
-                                try:
-                                    with open('tokens.txt', 'a') as f:
-                                        f.write(f"{token},{email}\n")
-                                    print(f"{Colors.GREEN}token和邮箱已成功添加到tokens.txt{Colors.RESET}")
-                                except Exception as e:
-                                    print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
-                        except json.JSONDecodeError:
-                            print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
-                    else:
-                        print(f"{Colors.RED}登录失败: {response_text}{Colors.RESET}")
-            except Exception as e:
-                print(f"{Colors.RED}登录过程中发生错误: {e}{Colors.RESET}")
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+        try:
+            data = {
+                "email": email,
+                "password": password
+            }
+            
+            # 从proxy.txt读取最后一行代理
+            with open('proxy.txt', 'r') as f:
+                proxies = f.readlines()
+            if proxies:
+                proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
+                print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
+                session._connector._proxy = proxy
+            
+            async with session.post(
+                f"{BASE_URL}/login",
+                json=data,
+                timeout=5
+            ) as response:
+                response_text = await response.text()
+                if response.status == 200:
+                    try:
+                        result = json.loads(response_text)
+                        token = result.get('token')
+                        print(f"\n{Colors.GREEN}登录成功！您的token是: {token}{Colors.RESET}")
+                        print("请保存此信息到tokens.txt文件中")
+                        
+                        save = input("\n是否自动保存登录信息到tokens.txt？(y/n): ")
+                        if save.lower() == 'y':
+                            try:
+                                with open('tokens.txt', 'a') as f:
+                                    f.write(f"{token},{email}\n")
+                                print(f"{Colors.GREEN}token和邮箱已成功添加到tokens.txt{Colors.RESET}")
+                            except Exception as e:
+                                print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
+                    except json.JSONDecodeError:
+                        print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
+                else:
+                    print(f"{Colors.RED}登录失败: {response_text}{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.RED}登录过程中发生错误: {e}{Colors.RESET}")
 
 async def register_account():
     """注册新账户"""
@@ -308,7 +304,7 @@ async def run_node():
     """运行节点测试并显示多个token的分数"""
     token_email_mapping = await load_tokens_with_emails()
     if not token_email_mapping:
-        logging.error("无法加载tokens和邮箱。请确保tokens.txt文件存在且包含有效的tokens和邮箱。")
+        logging.error("无法加载tokens和邮箱。请确保token.txt文件存在且包含有效的tokens和邮箱。")
         return
 
     proxies = await load_proxies()
