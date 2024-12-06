@@ -186,7 +186,7 @@ async def login_account():
             
             proxies = await load_proxies()
             if proxies:
-                proxy = proxies[-1]  # 使用第一个代理
+                proxy = proxies[-1]  # 使用最后一个代理
                 print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
                 session._connector._proxy = proxy
             
