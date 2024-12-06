@@ -184,9 +184,11 @@ async def login_account():
                 "password": password
             }
             
-            proxies = await load_proxies()
+            # 从proxy.txt读取最后一行代理
+            with open('proxy.txt', 'r') as f:
+                proxies = f.readlines()
             if proxies:
-                proxy = proxies[-1]  # 使用最后一个代理
+                proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
                 print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
                 session._connector._proxy = proxy
             
@@ -234,9 +236,11 @@ async def register_account():
             if referral_code:
                 data["referralCode"] = referral_code
             
-            proxies = await load_proxies()
+            # 从proxy.txt读取最后一行代理
+            with open('proxy.txt', 'r') as f:
+                proxies = f.readlines()
             if proxies:
-                proxy = proxies[0]
+                proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
                 print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
                 session._connector._proxy = proxy
             
