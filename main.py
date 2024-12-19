@@ -15,7 +15,7 @@ class Colors:
 
 # 基础配置
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-BASE_URL = "https://pipe-network-backend.pipecanary.workers.dev/api"
+BASE_URL = "https://api.pipecdn.app/api"
 
 # 时间间隔配置
 HEARTBEAT_INTERVAL = 300  # 5分钟
