@@ -172,53 +172,103 @@ async def start_testing(token, proxy=None):
             pass
 
 async def login_account():
-    """登录账户并获取token"""
+    """登录账户并获取token，支持多个账号和代理"""
     print("\n=== 账户登录 ===")
-    email = input("请输入邮箱: ")
-    password = input("请输入密码: ")
     
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-        try:
-            data = {
-                "email": email,
-                "password": password
-            }
-            
-            # 从proxy.txt读取最后一行代理
-            with open('proxy.txt', 'r') as f:
-                proxies = f.readlines()
-            if proxies:
-                proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
-                print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
-                session._connector._proxy = proxy
-            
-            async with session.post(
-                f"{BASE_URL}/login",
-                json=data,
-                timeout=5
-            ) as response:
-                response_text = await response.text()
-                if response.status == 200:
-                    try:
-                        result = json.loads(response_text)
-                        token = result.get('token')
-                        print(f"\n{Colors.GREEN}登录成功！您的token是: {token}{Colors.RESET}")
-                        print("请保存此信息到tokens.txt文件中")
-                        
-                        save = input("\n是否自动保存登录信息到tokens.txt？(y/n): ")
-                        if save.lower() == 'y':
-                            try:
-                                with open('tokens.txt', 'a') as f:
-                                    f.write(f"{token},{email}\n")
-                                print(f"{Colors.GREEN}token和邮箱已成功添加到tokens.txt{Colors.RESET}")
-                            except Exception as e:
-                                print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
-                    except json.JSONDecodeError:
-                        print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
+    token_email_mapping = {}
+    proxy_list = []
+
+    while True:
+        email = input("请输入邮箱（留空回车结束）: ")
+        if not email:  # 如果邮箱为空，跳出循环
+            break
+        
+        password = input("请输入密码: ")
+        proxy_list.append(email)  # 暂时将邮箱加入代理列表中，方便获取代理
+        
+        # 用户是否继续添加其他账号
+        save = input("\n是否继续添加其他账户？(y/n): ")
+        if save.lower() != 'y':
+            break  # 如果用户选择不继续，退出循环
+    
+    # 确保代理数量与邮箱数量一致
+    proxies = await load_proxies()
+    
+    if len(proxies) < len(proxy_list):
+        print(f"{Colors.YELLOW}警告：代理数量不足，当前只有 {len(proxies)} 个代理，而您有 {len(proxy_list)} 个邮箱。将为没有代理的邮箱使用直连。{Colors.RESET}")
+    
+    # 分配代理给每个邮箱，代理的数量不足时，剩余的邮箱使用直连
+    proxy_email_mapping = {}
+    for i, email in enumerate(proxy_list):
+        # 如果代理数量足够，为邮箱分配代理
+        if i < len(proxies):
+            proxy_email_mapping[email] = proxies[i]
+        else:
+            # 否则使用直连
+            proxy_email_mapping[email] = None
+    
+    # 显示邮箱和对应的代理
+    for email in proxy_email_mapping:
+        if proxy_email_mapping[email]:
+            print(f"{Colors.CYAN}邮箱: {email} 使用代理: {proxy_email_mapping[email]}{Colors.RESET}")
+        else:
+            print(f"{Colors.CYAN}邮箱: {email} 使用直连{Colors.RESET}")
+    
+    # 开始进行登录
+    for email in proxy_email_mapping:
+        password = input(f"请输入 {email} 的密码: ")
+        
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+            try:
+                data = {
+                    "email": email,
+                    "password": password
+                }
+                
+                # 获取当前邮箱对应的代理（如果有）
+                proxy = proxy_email_mapping[email]
+                
+                # 如果有代理，则设置代理
+                if proxy:
+                    print(f"{Colors.CYAN}为 {email} 使用代理: {proxy}{Colors.RESET}")
+                    session._connector._proxy = proxy  # 设置代理
                 else:
-                    print(f"{Colors.RED}登录失败: {response_text}{Colors.RESET}")
-        except Exception as e:
-            print(f"{Colors.RED}登录过程中发生错误: {e}{Colors.RESET}")
+                    print(f"{Colors.CYAN}为 {email} 使用直连{Colors.RESET}")
+                
+                async with session.post(
+                    f"{BASE_URL}/login",
+                    json=data,
+                    timeout=5
+                ) as response:
+                    response_text = await response.text()
+                    if response.status == 200:
+                        try:
+                            result = json.loads(response_text)
+                            token = result.get('token')
+                            print(f"\n{Colors.GREEN}登录成功！您的token是: {token}{Colors.RESET}")
+                            print("请保存此信息到tokens.txt文件中")
+                            
+                            # 保存token和邮箱到字典中，等待最后一起写入文件
+                            token_email_mapping[token] = email
+                        except json.JSONDecodeError:
+                            print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
+                    else:
+                        print(f"{Colors.RED}登录失败: {response_text}{Colors.RESET}")
+            except Exception as e:
+                print(f"{Colors.RED}登录过程中发生错误: {e}{Colors.RESET}")
+    
+    # 保存所有账户信息
+    if token_email_mapping:
+        save = input("\n是否自动保存所有账户信息到tokens.txt？(y/n): ")
+        if save.lower() == 'y':
+            try:
+                with open('tokens.txt', 'a') as f:
+                    for token, email in token_email_mapping.items():
+                        # 保存token和邮箱到tokens.txt，格式为 token,email
+                        f.write(f"{token},{email}\n")
+                print(f"{Colors.GREEN}所有账户信息已成功添加到tokens.txt{Colors.RESET}")
+            except Exception as e:
+                print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
 
 async def register_account():
     """注册新账户"""
