@@ -49,10 +49,10 @@ async def load_tokens_with_emails():
 
 
 # 加载多个账户
-async def load_account_with_emails():
+async def load_account_with_emails(file_path):
     """从token.txt文件中加载多个token和邮箱映射"""
     try:
-        with open('account.txt', 'r') as file:
+        with open(file_path, 'r') as file:
             account_email_mapping = {}
             for line in file:
                 parts = line.strip().split(':')
@@ -213,7 +213,7 @@ async def login_account():
     """登录账户并获取token，支持多个账号和代理"""
     print("\n=== 账户登录 ===")
 
-    account_email_mapping = await load_account_with_emails()
+    account_email_mapping = await load_account_with_emails('account.txt')
     if not account_email_mapping:
         logging.error("无法加载账号和邮箱。请确保token.txt文件存在且包含有效的tokens和邮箱。")
         return
@@ -233,7 +233,7 @@ async def login_account():
             print(f"{Colors.CYAN}邮箱: {key} 使用直连{Colors.RESET}")
             pass
         pass
-    token_email_mapping={}
+    token_email_mapping = {}
     # 开始进行登录
     for email in account_email_mapping:
         accountInfo = account_email_mapping.get(email)
@@ -292,54 +292,66 @@ async def login_account():
 async def register_account():
     """注册新账户"""
     print("\n=== 账户注册 ===")
-    email = input("请输入邮箱: ")
-    password = input("请输入密码: ")
     referral_code = "bHppeHVhbj"
+    account_email_mapping = await load_account_with_emails('register.txt')
+    if not account_email_mapping:
+        logging.error("无法加载账号。请确保register.txt文件存在且包含账号和密码。")
+        return
+    proxy_list = await load_proxies()
+    for index, key in enumerate(account_email_mapping):
+        account_email_mapping.get(key).update({'proxy': proxy_list[index]})
+        pass
+    logging.info("账号和代理加载成功!")
+    token_email_mapping = {}
+    for email in account_email_mapping:
+        accountInfo = account_email_mapping.get(email)
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+            try:
+                data = {
+                    "email": email,
+                    "password": accountInfo.get("password"),
+                }
+                if referral_code:
+                    data["referralCode"] = referral_code
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-        try:
-            data = {
-                "email": email,
-                "password": password,
-            }
-            if referral_code:
-                data["referralCode"] = referral_code
-
-            # 从proxy.txt读取最后一行代理
-            with open('proxy.txt', 'r') as f:
-                proxies = f.readlines()
-            if proxies:
-                proxy = proxies[-1].strip()  # 使用最后一行代理并去除换行符
-                print(f"{Colors.CYAN}使用代理: {proxy}{Colors.RESET}")
-                session._connector._proxy = proxy
-
-            async with session.post(
-                    f"{BASE_URL}/signup",
-                    json=data,
-                    timeout=5
-            ) as response:
-                response_text = await response.text()
-                if response.status in [200, 201]:
-                    try:
-                        result = json.loads(response_text)
-                        token = result.get('token')
-                        print(f"\n{Colors.GREEN}注册成功！您的token是: {token}{Colors.RESET}")
-                        print("请保存此信息到tokens.txt文件中")
-
-                        save = input("\n是否自动保存注册信息到tokens.txt？(y/n): ")
-                        if save.lower() == 'y':
-                            try:
-                                with open('tokens.txt', 'a') as f:
-                                    f.write(f"{token},{email}\n")
-                                print(f"{Colors.GREEN}token和邮箱已成功添加到tokens.txt{Colors.RESET}")
-                            except Exception as e:
-                                print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
-                    except json.JSONDecodeError:
-                        print(f"{Colors.RED}解析响应数据失败: {response_text}{Colors.RESET}")
+                proxy = accountInfo.get('proxy')
+                # 如果有代理，则设置代理
+                if proxy:
+                    print(f"{Colors.CYAN}为 {email} 使用代理: {proxy}{Colors.RESET}")
+                    session._connector._proxy = proxy  # 设置代理
                 else:
-                    print(f"{Colors.RED}注册失败: {response_text}{Colors.RESET}")
+                    print(f"{Colors.CYAN}为 {email} 使用直连{Colors.RESET}")
+                    pass
+                async with session.post(
+                        f"{BASE_URL}/signup",
+                        json=data,
+                        timeout=5
+                ) as response:
+                    response_text = await response.text()
+                    if response.status in [200, 201]:
+                        try:
+                            result = json.loads(response_text)
+                            token = result.get('token')
+                            print(f"\n{Colors.GREEN} 邮箱：{email} 注册成功！")
+                            token_email_mapping[token] = email
+                            time.sleep(RETRY_DELAY)
+                        except json.JSONDecodeError:
+                            print(f"{Colors.RED}注册邮箱 {email} 解析响应数据失败: {response_text}{Colors.RESET}")
+                    else:
+                        print(f"{Colors.RED}邮箱 {email} 注册失败: {response_text}{Colors.RESET}")
+            except Exception as e:
+                print(f"{Colors.RED}注册过程中发生错误: {e}{Colors.RESET}")
+        pass
+    if token_email_mapping:
+        try:
+            with open('token.txt', 'w') as f:
+                for token, email in token_email_mapping.items():
+                    # 保存token和邮箱到tokens.txt，格式为 token,email
+                    f.write(f"{token},{email}\n")
+            print(f"{Colors.GREEN}所有账户信息已成功添加到token.txt{Colors.RESET}")
         except Exception as e:
-            print(f"{Colors.RED}注册过程中发生错误: {e}{Colors.RESET}")
+            print(f"{Colors.RED}保存token和邮箱时发生错误: {e}{Colors.RESET}")
+        pass
 
 
 async def display_menu():
@@ -355,9 +367,9 @@ async def display_menu():
         print(f"{Colors.WHITE}2. 注册账户{Colors.RESET}")
         print(f"{Colors.WHITE}3. 登录账户{Colors.RESET}")
         print(f"{Colors.WHITE}4. 退出程序\n{Colors.RESET}")
-        
+
         choice = input("请输入选项 (1-4): ")
-        
+
         if choice == "1":
             await run_node()
         elif choice == "2":
@@ -369,6 +381,7 @@ async def display_menu():
             sys.exit(0)
         else:
             print("\n无效选项，请重试")
+
 
 async def run_node():
     """运行节点测试并显示多个token的分数"""
